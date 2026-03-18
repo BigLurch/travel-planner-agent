@@ -1,10 +1,11 @@
 from langchain.agents import create_agent
+from rich.console import Console
+from rich.panel import Panel
+from rich.prompt import Prompt
+from rich.markdown import Markdown
 
 from util.models import get_model
-from util.streaming_utils import STREAM_MODES, handle_stream
-from util.pretty_print import get_user_input
-
-from .travel_planner_prompt import TRAVEL_PLANNER_SYSTEM_PROMPT
+from examples.agent_lecture.travel_planner_prompt import TRAVEL_PLANNER_SYSTEM_PROMPT
 from examples.agent_lecture.travel_planner_questions import (
     REQUIRED_FIELDS,
     get_missing_fields,
@@ -13,9 +14,12 @@ from examples.agent_lecture.travel_planner_questions import (
 )
 
 
+console = Console()
+
+
 def build_travel_summary(profile: dict) -> str:
     return f"""
-Här är informationen som användaren har gett:
+Du ska skapa ett reseförslag för en person med följande profil:
 
 - Resmål / typ av resa: {profile.get("destination", "Ej angivet")}
 - Reslängd: {profile.get("duration", "Ej angivet")}
@@ -29,6 +33,38 @@ Skapa nu ett komplett reseförslag enligt instruktionerna.
 """.strip()
 
 
+def show_header():
+    console.print(
+        Panel.fit(
+            "[bold cyan]🌍 Travel Planner Agent[/bold cyan]\n[white]Jag hjälper dig att planera din resa steg för steg.[/white]",
+            border_style="cyan",
+        )
+    )
+    console.print("[dim]Skriv 'avsluta' om du vill avsluta.[/dim]\n")
+
+
+def show_question(question: str):
+    console.print(
+        Panel(
+            f"[bold yellow]Fråga:[/bold yellow]\n{question}",
+            title="Agent",
+            border_style="yellow",
+        )
+    )
+
+
+def show_result(result_text: str):
+    console.print(
+        Panel.fit(
+            "[bold green]✈️  Ditt reseförslag är klart! [/bold green]",
+            border_style="green",
+        )
+    )
+    console.print()
+    console.print(Markdown(result_text))
+    console.print()
+
+
 def run():
     model = get_model()
 
@@ -38,19 +74,15 @@ def run():
     )
 
     profile = {field: "" for field in REQUIRED_FIELDS}
-    current_field_index = 0
 
-    print("=== Travel Planner Agent ===")
-    print("Jag hjälper dig att planera en resa steg för steg.")
-    print("Skriv 'avsluta' om du vill avsluta.\n")
-
-    print("Agent:", get_next_question(profile))
+    show_header()
+    show_question(get_next_question(profile))
 
     while True:
-        user_input = input("Du: ").strip()
+        user_input = Prompt.ask("[bold blue]Du[/bold blue]").strip()
 
         if user_input.lower() in ["avsluta", "exit", "quit"]:
-            print("Agent: Tack! Lycka till med resplaneringen.")
+            console.print("\n[bold red]Hej då! Lycka till med resan.[/bold red]")
             break
 
         missing_fields = get_missing_fields(profile)
@@ -63,7 +95,8 @@ def run():
 
         if missing_fields:
             next_question = get_next_question(profile)
-            print(f"\nAgent: {next_question}\n")
+            console.print()
+            show_question(next_question)
         else:
             final_prompt = build_travel_summary(profile)
 
@@ -77,13 +110,20 @@ def run():
 
             assistant_message = response["messages"][-1].content
 
-            print("\nAgent: Här kommer ditt reseförslag:\n")
-            print(assistant_message)
-            print("\n---\n")
-            print("Agent: Vill du planera en ny resa? Skriv gärna igen, eller skriv 'avsluta'.\n")
+            console.print()
+            show_result(assistant_message)
+
+            console.print(
+                Panel(
+                    "[bold magenta]Vill du planera en ny resa?[/bold magenta]\nSvara på första frågan igen, eller skriv [bold]avsluta[/bold].",
+                    title="Ny planering",
+                    border_style="magenta",
+                )
+            )
 
             profile = {field: "" for field in REQUIRED_FIELDS}
-            print("Agent:", get_next_question(profile))
+            console.print()
+            show_question(get_next_question(profile))
 
 
 if __name__ == "__main__":
